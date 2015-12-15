@@ -1,3 +1,6 @@
+# Ignore credentials file
+creds.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
