@@ -5,8 +5,6 @@ import creds
 import os, os.path
 import random
 
-r = praw.Reddit(user-agent=creds.user-agent)
-r.login()
 
 # FUTURE FEATURE
 # def get_new_submissions
@@ -17,6 +15,8 @@ r.login()
 # FUTURE FEATURE
 # def check_repost
 # Compares an image against the images in posted
+# Easiest is a direct comparison (hash images and check for dups)
+# Harder is to do a resize, grayscale, pixel comparison, but will find resized and watermarked images
 # probably checks if image about to be posted has been posted before
 
 # upload image to imgur
@@ -31,8 +31,6 @@ def imgur_upload(client, subreddit, filename):
     response = client.upload_from_path(filename, config=config, anon=True)
     print("Done.  Image is uploaded at", response['link'])
 
-    #print(response) #debug
-
     return response['link']
 
 
@@ -41,40 +39,82 @@ def imgur_upload(client, subreddit, filename):
 # if filename is a directory, call this function instead to upload the album
 # upload all files in a folder to imgur
 
+# Use praw to post the image
+def post_to_subreddit(reddit, subredditname, filename, image_url):
+    try:
+        post_url = reddit.submit(subreddit=subredditname, title=filename, url=image_url)
+        return post_url, True
+    except:
+        return '', False
 
-#def moveFile(filename)
-# moves file to posted_images/
-# called when already in subreddit folder, so relative path should be easy
+# Do we have any unread messages?
+def orangered(reddit):
+    return sum(1 for _ in reddit.get_unread(limit=1))>0
+
+# Move posted image into correct folder
+def move_file(filename):
+    os.rename(filename, "../posted_images/" + filename)
 
 # Go to a subreddit, pick a random picture, upload it, post it, and move it
-def post(subreddit)
-    os.chdir(subreddit)
+def post(imgur, reddit, subreddit):
+    try:
+        os.chdir(subreddit + "/images_to_post")
+    except:
+        print("Unable to find directory:", subreddit + "/images_to_post")
+        return False
 
     # Pick and upload image
     print("Running script for subreddit", subreddit)
-    filename = random.choice(os.listdir('.'))
+    files = os.listdir('.')
+    if not files:
+        return False
+    filename = random.choice(files)
     print("File being uploaded is", filename)
-    url = imgur_upload(client, subreddit, filename)
+    image_url = imgur_upload(imgur, subreddit, filename)
 
     # Post to subreddit
+    print("Submitting...")
+    post_url, success = post_to_subreddit(reddit, subreddit, filename, image_url)
+    if not success:
+        print("ERROR: image was not submitted properly")
+        return False
+
+    print("Image submitted successfully at:", post_url)
 
     # Move image
+    print("Moving image...")
+    move_file(filename)
 
+    # Move back to original folder
+    os.chdir("../..")
+    print("Done with", subreddit + "!")
+    return True
 
 if __name__ == "__main__":
 
-    client = imgurpython.ImgurClient(creds.client_id, creds.client_secret)
+    #setup necessary clients
+    imgur = imgurpython.ImgurClient( creds.imgur_client_id, creds.imgur_client_secret )
+    reddit = praw.Reddit( creds.useragent )
+    reddit.set_oauth_app_info( client_id=creds.reddit_client_id,
+                               client_secret=creds.reddit_client_secret,
+                               redirect_uri=creds.redirect_uri )
+    reddit.refresh_access_information(creds.refresh_token)
+
+    # Check for new messages
+    if orangered(reddit):
+        print("\033[0;33mNew message(s)!\033[0m")
 
     # iterate through all subreddit folders
     for file in os.listdir('.'):
-        # subreddit directories cannot start with '.' or '_'
+        # subreddits and their directories cannot start with '.' or '_'
         if file[0] == '.' or file[0] == '_' or not os.path.isdir(file):
             continue
-        post(file)
-
+        if not post(imgur, reddit, file):
+            print("Was unable to post for subreddit", file)
 
 # perhaps run this as a cron job? (aka systemd)
 # and filter based on day of the week?
+# run everyday at 1700 - fri/sat/sun/mon/wed
 
 # while true?  something constantly running
 # check time every ~hour?
